@@ -505,12 +505,15 @@ load();
    ④ 톡 찍은 점도 필기로 남는다(누를 것이 있는 자리면 예전처럼 누르기만).
    ⑤ 빠른 지우개: 긁어 지우기 · 손가락으로 화면 두 번 톡(쓰던 도구 ↔ 지우개) · 펜 옆 단추/지우개 끝(S펜) · INK.pencil('tap'|'squeeze')(앱 껍데기가 부르는 자리).
       애플펜슬 몸통 두 번 톡·스퀴즈는 사파리가 웹 페이지에 알려 주지 않는다(네이티브 앱만 받는다).
+   ⑥ 2026-11-24: 도구 막대를 앱 편집기(내 노트)와 같게 — 펜 8색·형광펜 11색(휴대폰 4색)·「＋」 아무 색·굵기 값(고른 동그라미를 다시 누르면 조절)·형광펜 「직선」·지우개 「형광펜만」.
+      설정은 inkTool2에 저장(옛 inkTool은 색 번호만 옮겨 받는다). 앱은 INK.set({col}|{w})를 부른다.
    필기는 펜슬(pointerType pen)만 받는다. 손가락은 넘기기·단어 선택 그대로, 두 손가락은 확대.
    획 = {p:[x0,y0,dx,dy,…](반 픽셀 단위, 1/8 눈금), col, w, h?(형광), poly?(꺾은선), a·ay(묶인 칸)} · 글 = {t:1, p:[x,y], txt, col, fs, a, ay}. */
 var INK = (() => {
   const NSV = 'http://www.w3.org/2000/svg', $ = s => document.querySelector(s), DE = document.documentElement;
-  const PEN = ['#1c1d21', '#e53935', '#1e66f5', '#1b9e4b', '#f08c00', '#8e44ad'], HL = ['#ffd60a', '#4cd964', '#ff7ab8', '#5ac8fa', '#ff9f0a'], BG = ['', '#ffffff', '#fff3a6', '#d4f2d4', '#ffdbe8', '#d6eaff'];
-  const PW = [1.6, 2.6, 4.2], HW = [12, 18, 26], EW = [7, 13, 22], FS = [15, 19, 25], OLDCOL = ['#e53935', '#1e66f5'], OLDHL = ['#ffd60a', '#4cd964', '#ff7ab8'];
+  const PEN = ['#1c1d21', '#e53935', '#e8458b', '#f08c00', '#1b9e4b', '#2fa4e7', '#1e66f5', '#8e44ad'], HL = ['#ffd60a', '#ff9f0a', '#ff7ab8', '#ff5a5a', '#b388ff', '#4f8bff', '#5ac8fa', '#4cd964', '#c6ef5e', '#a8a8a8', '#ffffff'], BG = ['', '#ffffff', '#fff3a6', '#d4f2d4', '#ffdbe8', '#d6eaff'];
+  const PEN1 = ['#1c1d21', '#e53935', '#1e66f5', '#1b9e4b', '#f08c00', '#8e44ad'], HL1 = ['#ffd60a', '#4cd964', '#ff7ab8', '#5ac8fa', '#ff9f0a'];   // 11-24 전의 색 번호(옛 설정을 새 번호로 옮길 때만 쓴다)
+  const PW = [1.8, 3, 5], HW = [12, 20, 30], EW = [7, 13, 22], FS = [15, 19, 25], OLDCOL = ['#e53935', '#1e66f5'], OLDHL = ['#ffd60a', '#4cd964', '#ff7ab8'];
   const TAP_PX = 6, TAP_MS = 300, MAX_SCALE = 1.5, SMOOTH = .65, HOLD_MS = 450, SNAP = 4, PAD = 240, HINT = '펜슬로 필기';
   const ZOOM_OWN = true, ZMAX = 4, PALM_MS = 900, PALM_R = 44, GAP = .75;   // ZOOM_OWN = 확대를 엔진이 맡는다(끄면 브라우저 확대 그대로) · GAP = 점 사이 최소 간격(화면 pt)
   const SKIPSEL = 'input,textarea,select,audio,video,button,a,[contenteditable],#inkBar,.ink-x';
@@ -559,6 +562,9 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
 #inkBar .d{width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}
 #inkBar .d i{display:block;border-radius:50%;width:18px;height:18px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
 #inkBar .o{display:contents}
+#inkBar .pk{position:relative;box-sizing:border-box;min-height:36px;border:1px solid rgba(0,0,0,.16);border-radius:9px;background:#fff;font-size:19px;line-height:1;color:#555}
+#inkBar .pk input{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0}
+#inkBar input[type=range]{width:120px;margin:0 4px}
 #inkBar.fold>:not(.h){display:none}
 #inkSt{font-size:11px;color:#777;white-space:nowrap;padding:0 2px;margin-left:auto}
 @media print{#inkBar,#inkTop,#inkLive,#inkToast,.ink-pad button{display:none}body.ink-top{border-top:0}}`;
@@ -567,13 +573,18 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
   /* ── 상태 ── */
   let host = null, act = null, eat = false, zeat = false, blockClick = 0, synth = false, undo = [], redo = [], sel = null, ta = null, last = null, barWant = false, stText = '', penSeen = false;
   const all = new Set(), boxes = new WeakMap(), byEl = new WeakMap();
-  const S = {tool: 'pen', pen: 1, hl: 0, tc: 0, fs: 19, bg: 0, whole: false, scr: true, size: {pen: 1, hl: 1, erase: 1}}, dg = {d: 0, u: 0, c: 0, t: 0, s: 0, p: 0, n: 0, f: 0, r: 0, b: 0, v: 0, w: 0};
+  const S = {v: 2, tool: 'pen', pen: 1, hl: 0, tc: 0, fs: 19, bg: 0, whole: false, scr: true, size: {pen: 1, hl: 1, erase: 1}, penC: '', hlC: '', pw: PW.slice(), hw: HW.slice(), straight: false, ehl: false}, dg = {d: 0, u: 0, c: 0, t: 0, s: 0, p: 0, n: 0, f: 0, r: 0, b: 0, v: 0, w: 0};
   let dbg = false, dbgTap = [], fold = false, live = null, lctx = null, LR = null, raf = 0, topTimer = 0, prevTool = 'pen', toastT = 0;
   let Z = 1, pin = null, palmUntil = 0, lastTap = null, lastPen = null;   // Z = 엔진 확대 배율 · pin = 두 손가락 확대 중 · palmUntil = 이때까지 닿는 손은 손바닥으로 본다
   const ZU = new Set(), ZM = new WeakMap(), fingers = new Map();   // ZU = 확대 묶음 · ZM = 묶음마다 원래 아래 여백 · fingers = 닿아 있는 손가락
-  try { penSeen = localStorage.getItem('bnPen') === '1'; dbg = localStorage.getItem('ntDebug') === '1'; Object.assign(S, JSON.parse(localStorage.getItem('inkTool') || '{}')); fold = localStorage.getItem('inkFold') === '1'; } catch (e) {}
+  try { penSeen = localStorage.getItem('bnPen') === '1'; dbg = localStorage.getItem('ntDebug') === '1'; { let o = JSON.parse(localStorage.getItem('inkTool2') || 'null'); if (!o) { o = JSON.parse(localStorage.getItem('inkTool') || '{}'); const mv = (A, B, i) => Math.max(0, B.indexOf(A[i])); if (o.pen != null) o.pen = mv(PEN1, PEN, o.pen); if (o.tc != null) o.tc = mv(PEN1, PEN, o.tc); if (o.hl != null) o.hl = mv(HL1, HL, o.hl); }   // 옛 설정(inkTool)은 색 번호만 옮겨 받는다. 2판 설정은 따로 저장 — 옛 엔진이 남은 화면과 섞이지 않게
+    Object.assign(S, o); S.v = 2; const ok3 = (a, lo, hi) => Array.isArray(a) && a.length === 3 && a.every(v => v >= lo && v <= hi); if (!ok3(S.pw, .8, 14)) S.pw = PW.slice(); if (!ok3(S.hw, 6, 48)) S.hw = HW.slice(); if (!S.size || typeof S.size !== 'object') S.size = {pen: 1, hl: 1, erase: 1}; } fold = localStorage.getItem('inkFold') === '1'; } catch (e) {}
   if (S.tool !== 'hl') S.tool = 'pen';   // 색·굵기는 기억하되, 화면을 새로 열면 쓰는 도구(펜·형광펜)로 시작한다(지우개로 시작하면 당황스럽다)
-  const keep = () => { try { localStorage.setItem('inkTool', JSON.stringify(S)); } catch (e) {} };
+  const keep = () => { try { localStorage.setItem('inkTool2', JSON.stringify(S)); } catch (e) {} };
+  const PI = () => NARROW.matches ? [0, 1, 6, 4] : PEN.map((c, i) => i), HI = () => NARROW.matches ? [0, 2, 7, 6] : HL.map((c, i) => i);   // 좁은 화면(휴대폰)은 4색만(앱 편집기와 같음): 검정·빨강·파랑·초록 / 노랑·분홍·초록·하늘
+  const penCol = () => (S.pen >= PEN.length && S.penC) || PEN[S.pen] || PEN[0], hlCol = () => (S.hl >= HL.length && S.hlC) || HL[S.hl] || HL[0];   // 번호가 목록 수와 같으면 「＋」로 고른 색
+  const penW = () => S.pw[S.size.pen] || PW[1], hlW = () => S.hw[S.size.hl] || HW[1];
+  let wEd = false;   // 굵기 정하기(고른 굵기 동그라미를 한 번 더 누르면 막대에 굵기 조절 칸)
   if (NB) penSeen = true;   // 앱은 펜슬 기기에서만 쓴다
   const ns = (tag, at) => { const e = document.createElementNS(NSV, tag); for (const k in at) e.setAttribute(k, at[k]); return e; };
   const colOf = st => st.col || (st.h ? OLDHL : OLDCOL)[st.c] || OLDCOL[0], wOf = st => st.w || (st.h ? 16 : 2.2);
@@ -729,8 +740,9 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
     const src = c.q.s, out = [], dys = []; let hit = false, j = 0;
     for (let i = 0; i < src.length; i++) {
       const st = src[i], d = c.dy[i] || 0, el = c.svg.children[j], yy = y - d; let fr = null;
-      if (st.t) { let b = null; try { b = el.getBBox(); } catch (e) {} if (b && x >= b.x - r && x <= b.x + b.width + r && yy >= b.y - r && yy <= b.y + b.height + r) fr = []; }
-      else { fr = cut(st, x, yy, r + wOf(st) / 2); if (fr && S.whole) fr = []; }
+      if (S.ehl && !st.h) fr = null;   // 지우개 「형광펜만」
+      else if (st.t) { let b = null; try { b = el.getBBox(); } catch (e) {} if (b && x >= b.x - r && x <= b.x + b.width + r && yy >= b.y - r && yy <= b.y + b.height + r) fr = []; }
+      else { fr = cut(st, x, yy, r + wOf(st) / 2); if (fr && (S.whole || S.ehl)) fr = []; }
       if (!fr) { out.push(st); dys.push(d); j++; continue; }
       hit = true; const els = fr.map(f => { const e2 = elOf(f); if (d) e2.setAttribute('transform', `translate(0 ${d})`); return e2; });
       if (el) el.replaceWith(...els); fr.forEach(f => { out.push(f); dys.push(d); }); j += els.length;
@@ -940,7 +952,7 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
     if (cutOff && far < TAP_PX) { clearLive(); status(''); return; }
     if (!a.line && !a.frozen) {
       put(a, (a.rx - a.l) / a.k, (a.ry - a.tp) / a.k);   // 마지막은 펜을 뗀 그 자리까지
-      if (a.st.h) { const b = straight(a.st.p, 5 / a.u, .05, 12 / a.u); if (b) { a.line = true; toLine(a, b[0], b[1]); dg.s++; } }
+      if (a.st.h) { let b = straight(a.st.p, 5 / a.u, .05, 12 / a.u); if (!b && S.straight && !tap) { const o = pts(a.st.p), e = o[o.length - 1], dx = e[0] - o[0][0], dy = e[1] - o[0][1]; if (Math.hypot(dx, dy) > 8 / a.u) b = [e[0], Math.abs(dy) <= Math.abs(dx) * .176 ? o[0][1] : e[1]]; } if (b) { a.line = true; toLine(a, b[0], b[1]); dg.s++; } }
       else if (!tap && S.scr) {   // 긁어 지우기
         const hs = scribbled(c, a.st, a.u);
         if (hs) { clearLive(); const before = c.q.s.slice(); c.q.s = c.q.s.filter((s2, i) => !hs.has(i)); draw(c); record(c, before); toast('긁어서 지웠습니다 · ↩ 되돌리기'); return; }
@@ -976,7 +988,7 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
       const x = (cx - g.l) / a.k, y = (cy - g.t) / a.k;
       if (tool === 'pen' || tool === 'hl') {
         const hl = tool === 'hl', [an, ay] = anchor(c, y), X = q16(x), Y = q16(y); a.kind = 'draw'; a.lx = X; a.ly = Y; a.min2 = (2 * GAP / a.u) ** 2;
-        a.st = {col: hl ? HL[S.hl] : PEN[S.pen], w: hl ? HW[S.size.hl] : PW[S.size.pen], a: an, ay: Math.round(ay), p: [X, Y]}; if (hl) a.st.h = 1;
+        a.st = {col: hl ? hlCol() : penCol(), w: hl ? hlW() : penW(), a: an, ay: Math.round(ay), p: [X, Y]}; if (hl) a.st.h = 1;
         a.P = [X / 2, Y / 2]; a.dn = 0; a.tried = 0; placeLive(cx, cy); styleLive(a); wipe();
         a.hold = setInterval(() => { if (act !== a) return clearInterval(a.hold); if (a.line || a.frozen || Date.now() - a.ht < HOLD_MS || a.st.p.length === a.tried) return; a.tried = a.st.p.length; snap(a); }, 110);
       } else if (tool === 'erase') { a.before = c.q.s.slice(); a.er = EW[S.size.erase] / a.u; a.cur = ns('circle', {cx: cx - a.ox, cy: cy - a.oy, r: EW[S.size.erase] / z}); topSvg().appendChild(a.cur); if (eraseAt(c, x, y, a.er)) a.hit = true; }   // 지우개 크기는 화면에서 늘 같다(확대하면 더 섬세하게 지운다)
@@ -1189,14 +1201,18 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
     b.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x.dataset.t === S.tool));
     let h = Z !== 1 ? `<button type="button" class="zc" data-a="z1" aria-label="확대 풀기">${Math.round(Z * 100)}% ✕</button>` : '';
     if (t === 'lasso' && sel) h += '<button type="button" data-a="del">삭제</button><button type="button" data-a="dup">복제</button>';
-    if (t === 'pen' || (t === 'lasso' && sel)) h += PEN.map((c, i) => dot(`data-c="${i}" aria-label="색 ${i + 1}"`, c, i === S.pen && t === 'pen', 18)).join('');
-    if (t === 'hl') h += HL.map((c, i) => dot(`data-c="${i}" aria-label="형광 색 ${i + 1}"`, c, i === S.hl, 18)).join('');
-    if (t === 'erase') h += `<button type="button" data-a="whole" class="${S.whole ? 'on' : ''}">획 통째</button><button type="button" data-a="scr" class="${S.scr ? 'on' : ''}" aria-label="펜으로 긁어 지우기 켜기·끄기">긁어 지우기</button>`;
-    if (t === 'pen' || t === 'hl' || t === 'erase') h += [0, 1, 2].map(i => dot(`data-s="${i}" aria-label="굵기 ${i + 1}"`, '#555', i === S.size[t], 6 + i * 5)).join('');
+    const pick = col => `<label class="d pk" aria-label="다른 색 고르기">＋<input type="color" data-a="pick" value="${col}"></label>`;
+    if (t === 'pen' || (t === 'lasso' && sel)) h += PI().map(i => dot(`data-c="${i}" aria-label="색 ${i + 1}"`, PEN[i], i === S.pen && t === 'pen', 18)).join('');
+    if (t === 'pen') h += (S.penC ? dot(`data-c="${PEN.length}" aria-label="고른 색"`, S.penC, S.pen >= PEN.length, 18) : '') + pick(penCol());
+    if (t === 'hl') h += HI().map(i => dot(`data-c="${i}" aria-label="형광 색 ${i + 1}"`, HL[i], i === S.hl, 18)).join('') + (S.hlC ? dot(`data-c="${HL.length}" aria-label="고른 색"`, S.hlC, S.hl >= HL.length, 18) : '') + pick(hlCol());
+    if (t === 'erase') h += `<button type="button" data-a="whole" class="${S.whole && !S.ehl ? 'on' : ''}">획 통째</button><button type="button" data-a="part" class="${!S.whole && !S.ehl ? 'on' : ''}">닿은 부분만</button><button type="button" data-a="ehl" class="${S.ehl ? 'on' : ''}" aria-label="형광펜만 지우기(글씨는 그대로)">형광펜만</button><button type="button" data-a="scr" class="${S.scr ? 'on' : ''}" aria-label="펜으로 긁어 지우기 켜기·끄기">긁어 지우기</button>`;
+    if (t === 'pen' || t === 'hl' || t === 'erase') h += [0, 1, 2].map(i => { const w = t === 'pen' ? S.pw[i] : t === 'hl' ? S.hw[i] : 0, r = t === 'pen' ? Math.min(24, 4 + w * 2) : t === 'hl' ? Math.min(24, 6 + w * .45) : 6 + i * 5; return dot(`data-s="${i}"${w ? ` data-w="${w}"` : ''} aria-label="굵기 ${i + 1}"`, '#555', i === S.size[t], Math.round(r)); }).join('');
+    if (wEd && (t === 'pen' || t === 'hl')) { const hl = t === 'hl', w = hl ? hlW() : penW(); h += `<input type="range" data-a="wr" aria-label="굵기 정하기" min="${hl ? 6 : .8}" max="${hl ? 48 : 14}" step="${hl ? 1 : .2}" value="${w}"><span class="lb wv">${hl ? Math.round(w) : w.toFixed(1)}</span>`; }
+    if (t === 'hl') h += `<button type="button" data-a="straight" class="${S.straight ? 'on' : ''}" aria-label="형광펜 곧은 줄 켜기·끄기">직선</button>`;
     if (t === 'text') {   // 글상자: 글씨 크기 · 글씨 색 · 채움 색(편집 중이면 그 글상자에 바로 적용)
       const fs = ta ? ta.fs : S.fs, col = ta ? ta.col : PEN[S.tc], bg = ta ? ta.bg : BG[S.bg];
       h += `<button type="button" data-a="fs-" aria-label="글씨 작게">가−</button><span class="lb">${Math.round(fs)}</span><button type="button" data-a="fs+" aria-label="글씨 크게">가＋</button>`
-        + PEN.map((c, i) => dot(`data-c="${i}" aria-label="글씨 색 ${i + 1}"`, c, c === col, 18)).join('') + '<span class="lb">채움</span>'
+        + PI().map(i => dot(`data-c="${i}" aria-label="글씨 색 ${i + 1}"`, PEN[i], PEN[i] === col, 18)).join('') + '<span class="lb">채움</span>'
         + BG.map((c, i) => i ? dot(`data-b="${i}" aria-label="채움 색 ${i}"`, c, c === bg, 18) : `<button class="d${bg ? '' : ' on'}" type="button" data-b="0" aria-label="채움 없음">∅</button>`).join('')
         + (ta ? '<button type="button" data-a="tdel">삭제</button><button type="button" data-a="tdone">완료</button>' : '');
     }
@@ -1206,7 +1222,7 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
   }
   let natT = '', natR = '', nPass = null, natTm = 0;
   function natTool() {   // 앱에 지금 도구(펜·형광펜이면 색·화면 굵기)를 알린다 — 펜을 대는 순간 앱이 바로 그리도록
-    if (!NB) return; const hl = S.tool === 'hl', m = {t: 'tool', draw: S.tool === 'pen' || hl, col: hl ? HL[S.hl] : PEN[S.pen], w: (hl ? HW[S.size.hl] : PW[S.size.pen]) * Z * zNat(), hl};
+    if (!NB) return; const hl = S.tool === 'hl', m = {t: 'tool', draw: S.tool === 'pen' || hl, col: hl ? hlCol() : penCol(), w: (hl ? hlW() : penW()) * Z * zNat(), hl};
     const k = JSON.stringify(m); if (k !== natT) { natT = k; post(m); }
   }
   const PASS = '#inkBar,.ink-tb,#inkToast,input:not([type=radio]):not([type=checkbox]):not([type=button]):not([type=submit]),textarea,select,[contenteditable]:not([contenteditable=false]),audio,video,iframe';
@@ -1244,18 +1260,21 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
     b = document.createElement('div'); b.id = 'inkBar'; b.hidden = true; if (fold) b.className = 'fold';
     b.innerHTML = `<button class="h" type="button" aria-label="필기 도구 접기·펴기">✎</button>${TOOLS.map(([k, n]) => `<button type="button" data-t="${k}">${n}</button>`).join('')}<span class="o"></span><button type="button" data-a="undo" aria-label="되돌리기">↩</button><button type="button" data-a="redo" aria-label="다시 실행">↪</button><button type="button" data-a="pad">＋여백</button><span id="inkSt">${HINT}</span>`;
     document.body.appendChild(b); paintBar();
-    b.addEventListener('mousedown', e => e.preventDefault());   // 막대를 눌러도 편집 중인 글상자가 닫히지 않게
+    b.addEventListener('mousedown', e => { if (!e.target.closest('input')) e.preventDefault(); });   // 막대를 눌러도 편집 중인 글상자가 닫히지 않게
     b.addEventListener('click', e => {
       const x = e.target.closest('button'); if (!x) return; const d = x.dataset;
       if (x.classList.contains('h')) { fold = !fold; b.classList.toggle('fold', fold); try { localStorage.setItem('inkFold', fold ? '1' : '0'); } catch (x1) {} bar(barWant); return; }
-      if (d.t) { if (ta) closeText(); if (d.t !== 'lasso') clearSel(); S.tool = d.t; if (d.t !== 'erase') prevTool = d.t; status(d.t === 'lasso' ? '묶을 곳을 둘러 그리세요' : d.t === 'text' ? '글 쓸 자리를 펜으로 누르세요' : ''); }
+      if (d.t) { if (ta) closeText(); if (d.t !== 'lasso') clearSel(); wEd = false; S.tool = d.t; if (d.t !== 'erase') prevTool = d.t; status(d.t === 'lasso' ? '묶을 곳을 둘러 그리세요' : d.t === 'text' ? '글 쓸 자리를 펜으로 누르세요' : ''); }
       else if (d.c) { if (ta || S.tool === 'text') { S.tc = +d.c; if (ta) { ta.col = PEN[S.tc]; styleTa(); } } else if (S.tool === 'lasso') { selAction('col', PEN[+d.c]); return; } else if (S.tool === 'hl') S.hl = +d.c; else S.pen = +d.c; }
       else if (d.b) { S.bg = +d.b; if (ta) { ta.bg = BG[S.bg]; styleTa(); } }
-      else if (d.s) S.size[S.tool] = +d.s;
+      else if (d.s) { const k = S.tool; if ((k === 'pen' || k === 'hl') && S.size[k] === +d.s) wEd = !wEd; else { S.size[k] = +d.s; wEd = false; } }   // 고른 굵기를 한 번 더 누르면 굵기 정하기
       else if (d.a === 'fs-' || d.a === 'fs+') { const v = Math.max(10, Math.min(64, Math.round(ta ? ta.fs : S.fs) + (d.a === 'fs+' ? 2 : -2))); S.fs = v; if (ta) { ta.fs = v; styleTa(); } }
       else if (d.a === 'tdel') { if (ta) { ta.el.value = ''; closeText(); } return; }
       else if (d.a === 'tdone') return closeText();
-      else if (d.a === 'whole') S.whole = !S.whole;
+      else if (d.a === 'whole') { S.whole = S.ehl ? true : !S.whole; S.ehl = false; }
+      else if (d.a === 'part') { S.whole = false; S.ehl = false; }
+      else if (d.a === 'ehl') S.ehl = true;
+      else if (d.a === 'straight') S.straight = !S.straight;
       else if (d.a === 'scr') S.scr = !S.scr;
       else if (d.a === 'z1') { setZoom(1); return; }
       else if (d.a === 'undo') return step(undo, redo, 'before');
@@ -1264,7 +1283,16 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
       else if (d.a === 'pad') { const c = last && all.has(last) ? last : null; if (!c || c.kind === 'img') { status(c ? '쪽 그림에는 여백을 넣을 수 없습니다' : '여백을 넣을 곳에 먼저 펜을 대세요'); return; } c.q.pad = (c.q.pad || 0) + PAD; ensurePad(c); paint(c); host.save(c); c.pad.scrollIntoView({block: 'nearest', behavior: 'smooth'}); return; }
       keep(); paintBar(); if (ta) ta.el.focus();
     });
+    b.addEventListener('input', e => { const x = e.target, a = x.dataset && x.dataset.a; if (a === 'pick') set({col: x.value}, true); else if (a === 'wr') { set({w: +x.value}, true); const v = b.querySelector('.wv'); if (v) v.textContent = S.tool === 'hl' ? Math.round(+x.value) : (+x.value).toFixed(1); } });   // 고르는 중에는 막대를 다시 그리지 않는다(색 창·조절 칸이 닫히지 않게)
+    b.addEventListener('change', e => { const a = e.target.dataset && e.target.dataset.a; if (a === 'pick' || a === 'wr') paintBar(); });
     return b;
+  }
+  function set(o, quiet) {   // 앱 막대·웹 막대가 부르는 자리: {col: '#rrggbb'} = 지금 도구(펜·형광펜)의 「＋」 색 · {w: 굵기} = 지금 고른 굵기 동그라미의 굵기
+    if (!o) return; const hl = S.tool === 'hl', pen = S.tool === 'pen';
+    if (typeof o.col === 'string' && /^#[0-9a-f]{6}$/i.test(o.col)) { const c = o.col.toLowerCase(), i = (hl ? HL : PEN).indexOf(c), list = (hl ? HI : PI)().includes(i);
+      if (hl) { if (list) S.hl = i; else { S.hlC = c; S.hl = HL.length; } } else if (pen) { if (list) S.pen = i; else { S.penC = c; S.pen = PEN.length; } } }
+    if (o.w > 0) { if (hl) S.hw[S.size.hl] = Math.max(6, Math.min(48, +o.w)); else if (pen) S.pw[S.size.pen] = Math.max(.8, Math.min(14, +o.w)); }
+    keep(); if (quiet) natTool(); else paintBar();
   }
 
   return {
@@ -1273,7 +1301,7 @@ body.ink-top{border-top:var(--ink-h,0px) solid transparent}
     reset() { if (act) discard(); if (pin) pinchEnd(); closeText(); clearSel(); undo = []; redo = []; last = null; if (Z !== 1) { Z = 1; ZU.forEach(el => zoomEl(el)); afterZoom(); } paintBar(); },
     busy: () => !!act || !!pin, cancel() { if (act) discard(); }, cards: () => all.size,
     valid: s => s && (s.t ? typeof s.txt === 'string' && Array.isArray(s.p) : Array.isArray(s.p) && s.p.every(Number.isFinite)),
-    pencil, zoom: () => Z, setZoom, zoomSync,   // 2판: 빠른 도구 바꾸기 · 엔진 확대
+    pencil, zoom: () => Z, setZoom, zoomSync, set,   // 2판: 빠른 도구 바꾸기 · 엔진 확대
   };
 })();
 
